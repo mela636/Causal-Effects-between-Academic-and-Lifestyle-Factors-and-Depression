@@ -1,0 +1,186 @@
+---
+title: "CAUSAL EFFECTS IN REGARD TO DEPRESSION"
+author: "Melanie Najera"
+date: "2024-12-04"
+output: html_document
+---
+Data Necessities
+```{r libraries, echo=FALSE, message=FALSE, warning=FALSE}
+library(dplyr) 
+library(tidyr)
+library(caret) 
+library(broom)
+library(readr)
+library(pscl)
+library(ResourceSelection)  
+library(ggplot2) 
+```
+
+```{r csvFile, echo=FALSE, message=FALSE}
+df <- read_csv("C:/Users/kirik/Documents/Depression Student Dataset.csv")
+```
+```{r}
+glimpse(df)
+```
+```{r}
+sample(df)
+```
+Rename Variables
+```{r}
+# the spaces in the variable names make it difficult to code with
+df <- df %>% 
+  rename(
+    Study_Satisfaction = `Study Satisfaction`,
+    Suicidal_Thoughts = `Have you ever had suicidal thoughts ?`,
+    Family_History = `Family History of Mental Illness`,
+    Sleep_Duration = `Sleep Duration`,
+    Study_Hours = `Study Hours`,
+    Academic_Pressure = `Academic Pressure`,
+    Dietary_Habits = `Dietary Habits`,
+    Financial_Stress = `Financial Stress`
+  )
+```
+Clean the Data
+```{r}
+# makes sure academic pressure and financial stress are numeric
+df$Academic_Pressure <- as.numeric(df$Academic_Pressure)
+df$Financial_Stress <- as.numeric(df$Financial_Stress)
+
+# makes sure sleep duration is factors
+df$Sleep_Duration <- factor(df$Sleep_Duration)
+
+# remove rows with missing values just in case
+df <- na.omit(df)
+```
+
+```{r}
+# table for visualization of academic pressure, financial stress, and sleep duration
+table(df$Academic_Pressure) 
+table(df$Financial_Stress)
+table(df$Sleep_Duration)
+
+# to visualize the distribution of the variables being investigated
+ggplot(df, aes(x = Academic_Pressure)) + 
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Academic Pressure")
+
+ggplot(df, aes(x = Financial_Stress)) + 
+  geom_histogram(binwidth = 1, fill = "lightgreen", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Financial Stress")
+
+ggplot(df, aes(x = Sleep_Duration)) + 
+  geom_bar(fill = "yellow", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Sleep Duration") +
+  xlab("Sleep Duration") + 
+  ylab("Count")
+```
+```{r}
+depression_by_stress <- df %>%
+  group_by(Academic_Pressure, Depression) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# bar chart
+ggplot(depression_by_stress, aes(x = factor(Academic_Pressure), y = count, fill = Depression)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Academic Pressure (1 to 5)", y = "Count of People", 
+       title = "Number of Depressed and Non-Depressed People by Academic Pressure Level") +
+  scale_fill_manual(values = c("No" = "lightblue", "Yes" = "pink")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_discrete(labels = c("1", "2", "3", "4", "5"))
+```
+```{r}
+depression_by_financial_stress <- df %>%
+  group_by(Financial_Stress, Depression) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# bar chart
+ggplot(depression_by_financial_stress, aes(x = factor(Financial_Stress), y = count, fill = Depression)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Financial Stress (1 to 5)", y = "Count of People", 
+       title = "Number of Depressed and Non-Depressed People by Financial Stress Level") +
+  scale_fill_manual(values = c("No" = "lightblue", "Yes" = "pink")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_x_discrete(labels = c("1", "2", "3", "4", "5"))
+```
+```{r}
+# counts depression yes and no
+depression_by_sleep_duration <- df %>%
+  group_by(Sleep_Duration, Depression) %>%
+  summarise(count = n(), .groups = 'drop')
+
+# bar chart
+ggplot(depression_by_sleep_duration, aes(x = Sleep_Duration, y = count, fill = Depression)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Sleep Duration", y = "Count of People", 
+       title = "Number of Depressed and Non-Depressed People by Sleep Duration") +
+  scale_fill_manual(values = c("No" = "light blue", "Yes" = "pink")) +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+Fitting the Logistic Model
+```{r}
+# checking the levels of sleep duration as, at some point, it resulted in null
+levels(df$Sleep_Duration)
+```
+
+
+```{r}
+# making sure Depression is a factor due to prior errors I was receiving
+df$Depression <- factor(df$Depression, levels = c("No", "Yes"))
+
+# fit the logistic regression model
+model <- glm(Depression ~ Academic_Pressure + Financial_Stress + Sleep_Duration,
+             data = df, family = binomial)
+
+# show the summary 
+summary(model)
+```
+```{r}
+# gives a tidy summary of the glm model
+tidy_results <- tidy(model)
+
+# prints results
+print(tidy_results)
+```
+
+```{r}
+# assess the goodness of fit
+pR2(model)
+
+hltest <- hoslem.test(model$y, fitted(model), g=10)
+hltest
+
+```
+
+```{r}
+X <- model.matrix(model)
+
+# calculate the Condition Number for multicollinearity 
+condition_number <- kappa(X)
+
+# print
+print(condition_number)
+```
+
+```{r}
+# calculate residuals
+residuals <- residuals(model, type = "deviance")
+
+# plot residuals to check for patterns
+plot(residuals, main = "Deviance Residuals", xlab = "Index", ylab = "Residuals")
+
+# check for influential observations
+influence <- influence.measures(model)
+summary(influence)
+
+```
+
+```{r}
+# odds Ratios interpretation 
+odds_ratios <- exp(coef(model))
+odds_ratios
+```
+
